@@ -27,6 +27,8 @@ uvicorn app.main:app --reload
 
 Copy `backend/.env.example` to `backend/.env` and replace both placeholders, or set both variables in the shell before starting the API. The backend refuses to start without PostgreSQL. It creates users, sessions, applications, inventory, students, and refurbishment records in the database; no demo records are seeded.
 
+For a manual database bootstrap, run `backend/sql/bootstrap.sql` with `psql`. The script creates temporary accounts for each role and does not insert demo programme records. Replace the shared temporary password immediately after setup.
+
 Create the first staff account once the API is running:
 
 ```powershell
