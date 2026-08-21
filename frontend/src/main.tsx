@@ -19,6 +19,13 @@ const menus = [
   { label: 'Students', icon: Users },
 ]
 
+const roleDashboardInfo: Record<string, { title: string; description: string; items: string[] }> = {
+  student: { title: 'Student dashboard', description: 'Track your application, documents, and allocation status.', items: ['My application', 'Documents'] },
+  donor: { title: 'Donor dashboard', description: 'Register donated devices and follow their progress through the programme.', items: ['My donations', 'Donate a device'] },
+  supervisor: { title: 'Collection dashboard', description: 'Coordinate collections and account for every device handover.', items: ['Collections', 'Collection requests'] },
+  technician: { title: 'Technical dashboard', description: 'Inspect, repair, and quality-check devices before allocation.', items: ['Work queue', 'Quality assurance'] },
+}
+
 function LoginView({ onLogin }: { onLogin: (user: AuthUser) => void }) {
   const [number, setNumber] = useState('')
   const [password, setPassword] = useState('')
@@ -72,12 +79,18 @@ function LoginView({ onLogin }: { onLogin: (user: AuthUser) => void }) {
 }
 
 function EmptyState({ label }: { label: string }) {
-  return <div className="empty-state"><strong>No {label} records</strong><span>Records created in PostgreSQL will appear here.</span></div>
+  return <div className="empty-state"><strong>No {label} records</strong><span>Records created in the local database will appear here.</span></div>
 }
 
 function Table({ headers, rows, label }: { headers: string[]; rows: (string | number | undefined)[][]; label: string }) {
   if (!rows.length) return <EmptyState label={label} />
   return <div className="table-wrap"><table><thead><tr>{headers.map(header => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell ?? ''}</td>)}</tr>)}</tbody></table></div>
+}
+
+function RoleDashboard({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
+  const info = roleDashboardInfo[user.role] ?? roleDashboardInfo.student
+  const [section, setSection] = useState(info.items[0])
+  return <div className="app-shell"><aside className="sidebar"><div className="brand"><img src="/brand/tut-logo.png" alt="Tshwane University of Technology" /></div><nav aria-label="Primary navigation">{info.items.map(item => <button className={section === item ? 'nav-item active' : 'nav-item'} aria-current={section === item ? 'page' : undefined} key={item} onClick={() => setSection(item)}><LayoutDashboard size={19} aria-hidden="true" /><span>{item}</span></button>)}</nav><button className="user-card" onClick={onLogout}><span className="avatar" aria-hidden="true">{user.name.slice(0, 2).toUpperCase()}</span><span><strong>{user.name}</strong><small>{user.role}</small></span><LogOut size={16} aria-hidden="true" /><span className="sr-only">Sign out</span></button></aside><main><header><div className="crumb"><span>{user.name}</span> <span aria-hidden="true">/</span> <strong>{section}</strong></div><button className="secondary" onClick={onLogout}><LogOut size={16} aria-hidden="true" /> Sign out</button></header><section className="content"><div className="page-title"><div><p className="eyebrow">EDUCONNECT WORKSPACE</p><h1>{section}</h1><p>{info.description}</p></div></div><section className="panel role-home"><h2>{info.title}</h2><p>This workspace is ready for records associated with your account.</p><EmptyState label={section.toLowerCase()} /></section></section></main></div>
 }
 
 function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
@@ -86,8 +99,9 @@ function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => void })
   const [error, setError] = useState('')
 
   useEffect(() => {
+	if (!['admin', 'allocation_officer', 'reviewer'].includes(user.role)) return
     loadDashboardData().then(setData).catch(() => setError('Unable to load records from PostgreSQL.'))
-  }, [])
+  }, [user.role])
 
   const overview = data?.overview
   const applications = (data?.applications ?? []) as ApplicationRecord[]
@@ -107,7 +121,9 @@ function Metric({ title, value }: { title: string; value: number }) {
 function App() {
   const [user, setUser] = useState<AuthUser | null>(null)
   if (!user) return <LoginView onLogin={setUser} />
-  return <Dashboard user={user} onLogout={() => { api.post('/auth/logout').catch(() => undefined); setAuthToken(null); setUser(null) }} />
+  const signOut = () => { api.post('/auth/logout').catch(() => undefined); setAuthToken(null); setUser(null) }
+  const staffRoles = ['admin', 'allocation_officer', 'reviewer']
+  return staffRoles.includes(user.role) ? <Dashboard user={user} onLogout={signOut} /> : <RoleDashboard user={user} onLogout={signOut} />
 }
 
 createRoot(document.getElementById('root')!).render(<App />)
