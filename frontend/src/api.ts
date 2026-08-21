@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 /** Shared HTTP client for the FastAPI service. */
-export const api = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api' })
+export const api = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api' })
 
 export type AuthUser = { id: number; number: string; name: string; role: string }
 

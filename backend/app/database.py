@@ -94,7 +94,12 @@ def issue_token(engine, user: User) -> str:
 def user_for_token(engine, token: str) -> User | None:
     with Session(engine) as session:
         session_token = session.get(SessionToken, token)
-        if session_token is None or session_token.expires_at <= datetime.now(timezone.utc):
+        if session_token is None:
+            return None
+        expires_at = session_token.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= datetime.now(timezone.utc):
             return None
         return session.get(User, session_token.user_id)
 
