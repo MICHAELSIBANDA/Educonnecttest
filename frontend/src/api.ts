@@ -11,9 +11,14 @@ export function setAuthToken(token: string | null) {
 }
 
 export async function login(number: string, password: string) {
-	const response = await api.post<{ access_token: string; user: AuthUser }>('/auth/login', { number, password })
-	setAuthToken(response.data.access_token)
-	return response.data.user
+	try {
+		const response = await api.post<{ access_token: string; user: AuthUser }>('/auth/login', { number, password })
+		setAuthToken(response.data.access_token)
+		return response.data.user
+	} catch (error) {
+		if (axios.isAxiosError(error) && error.response?.status === 401) throw new Error('The number or password is incorrect.')
+		throw new Error('EduConnect is temporarily unavailable. Please try again.')
+	}
 }
 
 export async function loadDashboardData() {
