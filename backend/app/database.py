@@ -42,14 +42,15 @@ class SessionToken(Base):
 
 
 def database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        raise RuntimeError("DATABASE_URL must be set; demo mode has been removed")
+    url = os.getenv("DATABASE_URL", "sqlite:///./educonnect.db")
     return url.replace("postgres://", "postgresql+psycopg://", 1)
 
 
 def create_database_engine():
-    return create_engine(database_url(), pool_pre_ping=True)
+    url = database_url()
+    if url.startswith("sqlite"):
+        return create_engine(url, connect_args={"check_same_thread": False})
+    return create_engine(url, pool_pre_ping=True)
 
 
 def initialize_database(engine) -> None:

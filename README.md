@@ -25,7 +25,7 @@ $env:BOOTSTRAP_TOKEN = "REPLACE_WITH_A_LONG_RANDOM_BOOTSTRAP_TOKEN"
 uvicorn app.main:app --reload
 ```
 
-Copy `backend/.env.example` to `backend/.env` and replace both placeholders, or set both variables in the shell before starting the API. The backend refuses to start without PostgreSQL. It creates users, sessions, applications, inventory, students, and refurbishment records in the database; no demo records are seeded.
+For local development, the API uses `sqlite:///./educonnect.db` by default and creates `backend/educonnect.db` automatically. To use PostgreSQL instead, set `DATABASE_URL` to your PostgreSQL connection string. `BOOTSTRAP_TOKEN` is still required for the secure staff-account bootstrap endpoint. The database stores users, sessions, applications, inventory, students, and refurbishment records; no demo records are seeded.
 
 For a manual database bootstrap, run `backend/sql/bootstrap.sql` with `psql`. The script creates temporary accounts for each role and does not insert demo programme records. Replace the shared temporary password immediately after setup.
 
