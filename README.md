@@ -21,10 +21,19 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 $env:DATABASE_URL = "postgresql+psycopg://avnadmin:REPLACE_WITH_PASSWORD@pg-2c79e9bb-ictsport-app.j.aivencloud.com:16958/defaultdb?sslmode=require"
+$env:BOOTSTRAP_TOKEN = "REPLACE_WITH_A_LONG_RANDOM_BOOTSTRAP_TOKEN"
 uvicorn app.main:app --reload
 ```
 
-Copy `backend/.env.example` to `backend/.env` and replace the placeholder password, or set `DATABASE_URL` in the shell before starting the API. The backend creates its PostgreSQL state table on startup and persists application, inventory, student, and refurbishment state. Never commit the real `.env` file.
+Copy `backend/.env.example` to `backend/.env` and replace both placeholders, or set both variables in the shell before starting the API. The backend refuses to start without PostgreSQL. It creates users, sessions, applications, inventory, students, and refurbishment records in the database; no demo records are seeded.
+
+Create the first staff account once the API is running:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/auth/bootstrap -Headers @{ 'X-Bootstrap-Token' = $env:BOOTSTRAP_TOKEN } -ContentType 'application/json' -Body (@{ number = 'ADMIN_NUMBER'; name = 'Programme Admin'; role = 'admin'; password = 'USE_A_NEW_PASSWORD_AT_LEAST_12_CHARS' } | ConvertTo-Json)
+```
+
+Students and donors can register through `/api/auth/register`; staff accounts must be created through the bootstrap endpoint. Never commit the real `.env` file or expose the database password in source control.
 
 ## Core policy model
 
@@ -44,4 +53,4 @@ The implementation must preserve these rules as the product is expanded:
 - The target workflow is application, document verification, academic requirement profile, donation/device intake, refurbishment, classification, matching, reservation, collection, permanent handover, notification, and audit explanation.
 - The target actors are Student, Donor, Supervisor, Technician, Application Reviewer, Allocation Officer, and System Administrator, with role-controlled access to personal and financial information.
 
-The current prototype still uses local demo data and the backend is not yet connected to PostgreSQL, authentication, document storage, matching, notifications, or audit persistence. Those are required follow-on capabilities; the dashboard must not be treated as a production allocation engine until they are implemented.
+Authentication and core allocation records are now database-backed. Document storage, matching, notifications, and audit persistence remain follow-on capabilities.

@@ -3,7 +3,18 @@ import axios from 'axios'
 /** Shared HTTP client for the FastAPI service. */
 export const api = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api' })
 
-api.defaults.headers.common['X-Role'] = 'allocation_officer'
+export type AuthUser = { id: number; number: string; name: string; role: string }
+
+export function setAuthToken(token: string | null) {
+	if (token) api.defaults.headers.common.Authorization = `Bearer ${token}`
+	else delete api.defaults.headers.common.Authorization
+}
+
+export async function login(number: string, password: string) {
+	const response = await api.post<{ access_token: string; user: AuthUser }>('/auth/login', { number, password })
+	setAuthToken(response.data.access_token)
+	return response.data.user
+}
 
 export async function loadDashboardData() {
 	const [overview, applications, inventory, refurbishment, students] = await Promise.all([

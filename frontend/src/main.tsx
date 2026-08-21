@@ -1,120 +1,79 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ArrowRight, Bell, Boxes, ChevronDown, CircleHelp, ClipboardList, Eye, FileCheck2, FileText, HeartHandshake, Laptop, LayoutDashboard, LockKeyhole, LogOut, Search, Settings, ShieldCheck, SlidersHorizontal, Truck, Upload, UserRound, Users, Wrench } from 'lucide-react'
+import { ArrowRight, Boxes, ClipboardList, LayoutDashboard, LogOut, Users, Wrench } from 'lucide-react'
 import './styles.css'
 import './brand.css'
-import { api, loadDashboardData } from './api'
+import { api, loadDashboardData, login, setAuthToken, type AuthUser } from './api'
 
-type Status = 'Pending review' | 'Eligible' | 'Reserved' | 'More info needed'
-type Applicant = { position: number; name: string; number: string; faculty: string; programme: string; average: string; submitted: string; profile: string; status: Status }
-type InventoryItem = { asset: string; model: string; condition: string; location: string; status: string }
-type Student = { name: string; number: string; faculty: string; programme: string; year: string; device: string }
-type Role = 'student' | 'donor' | 'supervisor' | 'technician' | 'admin'
-type RoleInfo = { label: string; title: string; description: string; initials: string }
+type Role = 'student' | 'donor' | 'supervisor' | 'technician' | 'reviewer' | 'allocation_officer' | 'admin'
+type DashboardData = Awaited<ReturnType<typeof loadDashboardData>>
+type ApplicationRecord = { position?: number; name?: string; faculty?: string; programme?: string; status?: string }
+type InventoryRecord = { asset?: string; model?: string; condition?: string; location?: string; status?: string }
+type RefurbishmentRecord = { asset?: string; model?: string; technician?: string; completed?: string; result?: string }
+type StudentRecord = { name?: string; number?: string; faculty?: string; programme?: string; device?: string }
 
-const roleInfo: Record<Role, RoleInfo> = {
-  student: { label: 'Student', title: 'Student dashboard', description: 'Apply for a device and follow your application from review to collection.', initials: 'TS' },
-  donor: { label: 'Donor', title: 'Donor dashboard', description: 'Register donated computers and follow their journey into the programme.', initials: 'ND' },
-  supervisor: { label: 'Supervisor', title: 'Collection dashboard', description: 'Coordinate donated device collections and hand them over to the tech team.', initials: 'SM' },
-  technician: { label: 'Tech team', title: 'Tech team dashboard', description: 'Inspect, repair and quality-check donated devices before allocation.', initials: 'KT' },
-  admin: { label: 'Admin', title: 'Programme operations', description: 'Verify students, manage inventory and make fair allocations.', initials: 'NM' },
+const menus = [
+  { label: 'Overview', icon: LayoutDashboard },
+  { label: 'Applications', icon: ClipboardList },
+  { label: 'Inventory', icon: Boxes },
+  { label: 'Refurbishment', icon: Wrench },
+  { label: 'Students', icon: Users },
+]
+
+function LoginView({ onLogin }: { onLogin: (user: AuthUser) => void }) {
+  const [number, setNumber] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const submit = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      onLogin(await login(number, password))
+    } catch {
+      setError('Invalid credentials or unavailable database.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return <div className="landing-shell"><div className="landing-curve curve-blue"/><div className="landing-curve curve-red"/><div className="landing-curve curve-gold"/><div className="landing-logo"><img src="/brand/tut-logo.png" alt="Tshwane University of Technology"/></div><div className="landing-grid"><section className="landing-intro"><p className="landing-kicker">TUT DEVICE ACCESS PLATFORM</p><h1>EduConnect</h1><p>MISSING MIDDLE<br/>DEVICE PROGRAMME</p><small>Sign in to access your database-backed programme workspace.</small></section><section className="auth-card"><p className="auth-kicker">SECURE ACCESS</p><h2>Sign in to continue</h2><label>Student / Staff Number<div className="input-wrap"><input value={number} onChange={event => setNumber(event.target.value)} placeholder="Enter your number"/></div></label><label>Password<div className="input-wrap"><input value={password} onChange={event => setPassword(event.target.value)} type="password" placeholder="Enter your password" onKeyDown={event => { if (event.key === 'Enter') submit() }}/></div></label>{error && <p className="auth-error">{error}</p>}<button className="auth-primary" disabled={busy || !number || !password} onClick={submit}>{busy ? 'Signing in...' : 'Sign In'} <ArrowRight size={18}/></button><p className="auth-footer">New users must be registered by programme support.</p></section></div></div>
 }
 
-const applicants: Applicant[] = [
-  { position: 1, name: 'Thabo Mokoena', number: '222345678', faculty: 'ICT', programme: 'Diploma in IT', average: '72%', submitted: '18 Aug 2026, 08:42', profile: 'G3', status: 'Eligible' },
-  { position: 2, name: 'Lerato Dlamini', number: '223456789', faculty: 'Science', programme: 'Diploma in Analytical Chemistry', average: '68%', submitted: '18 Aug 2026, 09:17', profile: 'G2', status: 'Eligible' },
-  { position: 3, name: 'Anele Ndlovu', number: '224567890', faculty: 'Humanities', programme: 'Diploma in Language Practice', average: '64%', submitted: '18 Aug 2026, 10:04', profile: 'G1', status: 'Pending review' },
-  { position: 4, name: 'Mpho Khumalo', number: '225678901', faculty: 'Management Sciences', programme: 'Diploma in Marketing', average: '61%', submitted: '19 Aug 2026, 08:09', profile: 'G1', status: 'More info needed' },
-  { position: 5, name: 'Sibusiso Naidoo', number: '226789012', faculty: 'ICT', programme: 'Diploma in Multimedia Computing', average: '75%', submitted: '19 Aug 2026, 09:35', profile: 'G3', status: 'Reserved' },
-]
-const menu = [{ icon: LayoutDashboard, label: 'Overview' }, { icon: ClipboardList, label: 'Applications', active: true }, { icon: Boxes, label: 'Inventory' }, { icon: Wrench, label: 'Refurbishment' }, { icon: Users, label: 'Students' }]
-const statusClass: Record<Status, string> = { 'Pending review': 'pending', Eligible: 'eligible', Reserved: 'reserved', 'More info needed': 'needed' }
-const inventory: InventoryItem[] = [
-  { asset: 'TUT-DEV-1042', model: 'Lenovo ThinkPad L14', condition: 'Grade A', location: 'Main store', status: 'Ready to allocate' },
-  { asset: 'TUT-DEV-1043', model: 'Dell Latitude 5420', condition: 'Grade A', location: 'Main store', status: 'Ready to allocate' },
-  { asset: 'TUT-DEV-1044', model: 'HP ProBook 440 G8', condition: 'Grade B', location: 'TUT eMalahleni', status: 'Awaiting QA' },
-  { asset: 'TUT-DEV-1045', model: 'Lenovo ThinkPad L14', condition: 'Grade B', location: 'Main store', status: 'Reserved' },
-]
-const refurbished = [
-  { asset: 'TUT-DEV-1044', model: 'HP ProBook 440 G8', technician: 'K. Mthembu', completed: '19 Aug 2026', result: 'Awaiting QA' },
-  { asset: 'TUT-DEV-1038', model: 'Dell Latitude 5420', technician: 'S. Molefe', completed: '18 Aug 2026', result: 'Passed' },
-  { asset: 'TUT-DEV-1037', model: 'Lenovo ThinkPad L14', technician: 'K. Mthembu', completed: '18 Aug 2026', result: 'Passed' },
-]
-const students: Student[] = [
-  { name: 'Thabo Mokoena', number: '222345678', faculty: 'ICT', programme: 'Diploma in IT', year: '2nd year', device: 'Allocated' },
-  { name: 'Lerato Dlamini', number: '223456789', faculty: 'Science', programme: 'Diploma in Analytical Chemistry', year: '1st year', device: 'Pending allocation' },
-  { name: 'Anele Ndlovu', number: '224567890', faculty: 'Humanities', programme: 'Diploma in Language Practice', year: '3rd year', device: 'Pending review' },
-  { name: 'Mpho Khumalo', number: '225678901', faculty: 'Management Sciences', programme: 'Diploma in Marketing', year: '2nd year', device: 'More info needed' },
-]
+function EmptyState({ label }: { label: string }) {
+  return <div className="empty-state"><strong>No {label} records</strong><span>Records created in PostgreSQL will appear here.</span></div>
+}
+
+function Table({ headers, rows, label }: { headers: string[]; rows: (string | number | undefined)[][]; label: string }) {
+  if (!rows.length) return <EmptyState label={label}/>
+  return <div className="table-wrap"><table><thead><tr>{headers.map(header => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell ?? ''}</td>)}</tr>)}</tbody></table></div>
+}
+
+function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
+  const [section, setSection] = useState('Overview')
+  const [data, setData] = useState<DashboardData | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    if (!['admin', 'allocation_officer', 'reviewer', 'supervisor', 'technician'].includes(user.role)) return
+    loadDashboardData().then(setData).catch(() => setError('Unable to load records from PostgreSQL.'))
+  }, [user.role])
+  const overview = data?.overview
+  const applications = (data?.applications ?? []) as ApplicationRecord[]
+  const inventory = (data?.inventory ?? []) as InventoryRecord[]
+  const refurbishment = (data?.refurbishment ?? []) as RefurbishmentRecord[]
+  const students = (data?.students ?? []) as StudentRecord[]
+  const activeRows = section === 'Applications' ? applications.map(item => [item.position, item.name, item.faculty, item.programme, item.status]) : section === 'Inventory' ? inventory.map(item => [item.asset, item.model, item.condition, item.location, item.status]) : section === 'Refurbishment' ? refurbishment.map(item => [item.asset, item.model, item.technician, item.completed, item.result]) : students.map(item => [item.name, item.number, item.faculty, item.programme, item.device])
+  const headers = section === 'Applications' ? ['Queue', 'Student', 'Faculty', 'Programme', 'Status'] : section === 'Inventory' ? ['Asset', 'Model', 'Condition', 'Location', 'Status'] : section === 'Refurbishment' ? ['Asset', 'Model', 'Technician', 'Completed', 'Result'] : ['Student', 'Number', 'Faculty', 'Programme', 'Device']
+  return <div className="app-shell"><aside className="sidebar"><div className="brand"><img src="/brand/tut-logo.png" alt="Tshwane University of Technology"/></div><nav>{menus.map(({ label, icon: Icon }) => <button className={section === label ? 'nav-item active' : 'nav-item'} key={label} onClick={() => setSection(label)}><Icon size={19}/><span>{label}</span></button>)}</nav><button className="user-card" onClick={onLogout}><span className="avatar">{user.name.slice(0, 2).toUpperCase()}</span><span><strong>{user.name}</strong><small>{user.role}</small></span><LogOut size={16}/></button></aside><main><header><div className="crumb">{user.name} <span>/</span> {section}</div><button className="secondary" onClick={onLogout}><LogOut size={16}/> Sign out</button></header><section className="content">{error && <div className="toast">{error}</div>}<div className="page-title"><div><p className="eyebrow">DATABASE-BACKED PROGRAMME</p><h1>{section}</h1><p>Live records from the EduConnect PostgreSQL database.</p></div></div>{section === 'Overview' ? <><div className="metrics"><Metric title="Applications" value={overview?.total_applications ?? 0}/><Metric title="Eligible students" value={overview?.eligible_students ?? 0}/><Metric title="Ready devices" value={overview?.ready_devices ?? 0}/><Metric title="Awaiting review" value={overview?.awaiting_review ?? 0}/></div><section className="panel"><h2>Programme data</h2><p>Metrics are calculated from records stored in PostgreSQL.</p></section></> : <section className="panel"><div className="panel-top"><div><h2>{section} records</h2><p>Only persisted database records are shown.</p></div></div><Table headers={headers} rows={activeRows} label={section.toLowerCase()}/></section>}</section></main></div>
+}
+
+function Metric({ title, value }: { title: string; value: number }) {
+  return <article className="metric"><span className="metric-line blue"/><p>{title}</p><strong>{value}</strong><small>PostgreSQL records</small></article>
+}
 
 function App() {
-  const [role, setRole] = useState<Role | null>(null)
-  const [faculty, setFaculty] = useState('All faculties')
-  const [query, setQuery] = useState('')
-  const [notice, setNotice] = useState('')
-  const [activeSection, setActiveSection] = useState('Applications')
-  const [profileOpen, setProfileOpen] = useState(false)
-  const [applicationData, setApplicationData] = useState(applicants)
-  const [inventoryData, setInventoryData] = useState(inventory)
-  const [refurbishmentData, setRefurbishmentData] = useState(refurbished)
-  const [studentData, setStudentData] = useState(students)
-  const [overviewData, setOverviewData] = useState({ total_applications: 248, eligible_students: 126, ready_devices: 38, awaiting_review: 24, complete_first_submission: 72, average_allocation_days: 15, qa_pass_rate: 84 })
-  useEffect(() => {
-    if (role !== 'admin') return
-    api.defaults.headers.common['X-Role'] = role
-    loadDashboardData().then(data => {
-      setApplicationData(data.applications)
-      setInventoryData(data.inventory)
-      setRefurbishmentData(data.refurbishment)
-      setStudentData(data.students)
-      setOverviewData(data.overview)
-    }).catch(() => setNotice('API unavailable. Showing demo data.'))
-  }, [role])
-  const displayed = useMemo(() => applicationData.filter(a => (faculty === 'All faculties' || a.faculty === faculty) && `${a.name} ${a.number} ${a.programme}`.toLowerCase().includes(query.toLowerCase())), [applicationData, faculty, query])
-  const enterRole = (selectedRole: Role) => { setRole(selectedRole); setActiveSection(selectedRole === 'admin' ? 'Applications' : selectedRole === 'student' ? 'My application' : selectedRole === 'donor' ? 'My donations' : selectedRole === 'supervisor' ? 'Collections' : 'Work queue') }
-  if (!role) return <LoginView onLogin={enterRole} />
-  const info = roleInfo[role]
-  const signOut = () => { setRole(null); setActiveSection('Overview'); setNotice('') }
-  const roleMenu = role === 'admin' ? menu : role === 'student' ? [{ icon: LayoutDashboard, label: 'My application', active: true }, { icon: FileText, label: 'Documents' }] : role === 'donor' ? [{ icon: LayoutDashboard, label: 'My donations', active: true }, { icon: HeartHandshake, label: 'Donate a device' }] : role === 'supervisor' ? [{ icon: LayoutDashboard, label: 'Collections', active: true }, { icon: Truck, label: 'Collection requests' }] : [{ icon: LayoutDashboard, label: 'Work queue', active: true }, { icon: Wrench, label: 'Repairs' }, { icon: ShieldCheck, label: 'Quality assurance' }]
-  return <div className="app-shell">
-    <aside className="sidebar">
-      <div className="brand"><img src="/brand/tut-logo.png" alt="Tshwane University of Technology"/></div>
-      <nav>{roleMenu.map(item => <button className={activeSection === item.label ? 'nav-item active' : 'nav-item'} key={item.label} onClick={() => { setActiveSection(item.label); setNotice(`${item.label} selected.`) }}><item.icon size={19}/><span>{item.label}</span>{item.label === 'Applications' && <b>24</b>}</button>)}</nav>
-      <div className="sidebar-bottom"><button className="nav-item" onClick={() => setNotice('Settings selected.')}><Settings size={19}/><span>Settings</span></button><button className="nav-item" onClick={() => setNotice('Help centre selected.')}><CircleHelp size={19}/><span>Help centre</span></button><button className="user-card" onClick={signOut}><div className="avatar">{info.initials}</div><div><strong>{info.label}</strong><small>Sign out</small></div><LogOut size={16}/></button></div>
-    </aside>
-    <main>
-      <header><div className="mobile-brand"><img src="/brand/tut-logo.png" alt="Tshwane University of Technology"/></div><div className="crumb">{info.label} <span>/</span> {activeSection}</div><div className="header-actions"><button className="icon-btn" aria-label="Notifications" onClick={() => setNotice('You have 3 unread notifications.')}><Bell size={20}/><i/></button><div className="profile-menu"><button className="profile" aria-label="Open profile menu" onClick={() => setProfileOpen(open => !open)}><span className="avatar">{info.initials}</span><ChevronDown size={16}/></button>{profileOpen && <div className="profile-dropdown"><strong>{info.label}</strong><button onClick={() => { setProfileOpen(false); setNotice('Profile selected.') }}>View profile</button><button onClick={() => { setProfileOpen(false); signOut() }}>Sign out</button></div>}</div></div></header>
-      <section className="content">
-        {notice && <div className="toast">{notice}<button onClick={() => setNotice('')}>×</button></div>}
-        {role === 'student' && <StudentDashboard onAction={setNotice} />}
-        {role === 'donor' && <DonorDashboard onAction={setNotice} />}
-        {role === 'supervisor' && <SupervisorDashboard onAction={setNotice} />}
-        {role === 'technician' && <TechnicianDashboard onAction={setNotice} />}
-        {role === 'admin' && activeSection === 'Overview' && <OverviewView data={overviewData} onAction={setNotice} />}
-        {activeSection === 'Applications' && <ApplicationsView displayed={displayed} query={query} faculty={faculty} setQuery={setQuery} setFaculty={setFaculty} onAction={setNotice} />}
-        {activeSection === 'Inventory' && <InventoryView items={inventoryData} onAction={setNotice} />}
-        {activeSection === 'Refurbishment' && <RefurbishmentView items={refurbishmentData} onAction={setNotice} />}
-        {activeSection === 'Students' && <StudentsView items={studentData} onAction={setNotice} />}
-        {activeSection === 'Settings' && <SimpleView title="Settings" description="Manage programme settings and allocation rules." onAction={setNotice} action="Open settings" />}
-        {activeSection === 'Help centre' && <SimpleView title="Help centre" description="Find guidance for reviewing applications and allocating devices." onAction={setNotice} action="Open help centre" />}
-      </section>
-    </main>
-  </div>
+  const [user, setUser] = useState<AuthUser | null>(null)
+  if (!user) return <LoginView onLogin={setUser}/>
+  return <Dashboard user={user} onLogout={() => { api.post('/auth/logout').catch(() => undefined); setAuthToken(null); setUser(null) }}/>
 }
-    function LoginView({ onLogin }: { onLogin: (role: Role) => void }) { const [role, setRole] = useState<Role>('student'); const [authPage, setAuthPage] = useState<'login' | 'register'>('login'); const [registered, setRegistered] = useState(false); return <div className="landing-shell"><div className="landing-curve curve-blue"/><div className="landing-curve curve-red"/><div className="landing-curve curve-gold"/><div className="landing-logo"><img src="/brand/tut-logo.png" alt="Tshwane University of Technology"/></div><div className="landing-grid"><section className="landing-intro"><p className="landing-kicker">TUT DEVICE ACCESS PLATFORM</p><h1>EduConnect</h1><p>MISSING MIDDLE<br/>DEVICE PROGRAMME</p><small>Connecting students with the devices they need to learn, grow and succeed.</small></section>{authPage === 'login' ? <section className="auth-card sign-in-card"><p className="auth-kicker">WELCOME BACK!</p><h2>Sign in to continue</h2><label>Student / Staff Number<div className="input-wrap"><UserRound size={16}/><input placeholder="Enter your student or staff number" /></div></label><label>Password<div className="input-wrap"><LockKeyhole size={16}/><input type="password" placeholder="Enter your password"/><Eye size={16}/></div></label><button className="forgot" type="button">Forgot password?</button><button className="auth-primary" type="button" onClick={() => onLogin(role)}>Sign In <ArrowRight size={18}/></button><div className="auth-divider"><span>or continue with</span></div><button className="microsoft-button" type="button"><span className="microsoft-mark"><i/><i/><i/><i/></span>Microsoft 365</button><p className="auth-footer">New to EduConnect? <button type="button" onClick={() => setAuthPage('register')}>Register here</button></p><small className="demo-note">Demo access is enabled for this prototype.</small></section> : <section className="auth-card register-card"><p className="auth-kicker">CREATE YOUR ACCOUNT</p><h2>Register to access EduConnect</h2><label>I am a<select value={role} onChange={event => setRole(event.target.value as Role)}>{(Object.keys(roleInfo) as Role[]).map(item => <option key={item} value={item}>{roleInfo[item].label}</option>)}</select></label><label>Student / Staff Number<input placeholder="Enter your student or staff number" /></label><label>Full Names<input placeholder="Enter your full names" /></label><label>Email Address<input type="email" placeholder="Enter your TUT email address" /></label><label>Password<div className="input-wrap"><input type="password" placeholder="Create a password"/><Eye size={16}/></div></label><label>Confirm Password<div className="input-wrap"><input type="password" placeholder="Confirm your password"/><Eye size={16}/></div></label><label className="terms"><input type="checkbox"/> <span>I agree to the TUT terms and conditions<br/>and privacy policy.</span></label><button className="auth-primary" type="button" onClick={() => setRegistered(true)}>Register <UserRound size={17}/></button>{registered && <p className="register-success">Registration details captured. You can sign in when your account is approved.</p>}<p className="auth-footer">Already have an account? <button type="button" onClick={() => setAuthPage('login')}>Sign in</button></p></section>}</div><footer className="landing-footer">© Tshwane University of Technology</footer></div> }
-    function DashboardIntro({ title, description, action, onAction }: { title: string; description: string; action: string; onAction: (message: string) => void }) { return <PageTitle title={title} description={description} action={action} onAction={() => onAction(`${action} opened.`)} /> }
-    function StudentDashboard({ onAction }: { onAction: (message: string) => void }) { return <><DashboardIntro title="My application" description="Keep your supporting documents and application status in one place." action="Update application" onAction={onAction}/><div className="metrics"><Metric title="Application status" value="Pending review" note="Submitted 18 Aug 2026" color="gold"/><Metric title="Queue position" value="#18" note="Complete applications only" color="blue"/><Metric title="Academic average" value="72%" note="Verified on submission" color="green"/></div><div className="role-columns"><section className="panel"><div className="panel-top"><div><h2>Application progress</h2><p>We will notify you when your status changes.</p></div></div><div className="progress-list"><div className="progress-step done"><b>1</b><span><strong>Application submitted</strong><small>18 Aug 2026, 08:42</small></span></div><div className="progress-step current"><b>2</b><span><strong>Documents under review</strong><small>Family income proof is being verified</small></span></div><div className="progress-step"><b>3</b><span><strong>Ready for collection</strong><small>Collection details will appear here</small></span></div></div></section><section className="panel"><div className="panel-top"><div><h2>Supporting documents</h2><p>Keep your proof current and readable.</p></div><Upload size={20}/></div><label className="upload-box"><Upload size={22}/><strong>Upload a document</strong><small>PDF, JPG or PNG up to 10 MB</small><input type="file" onChange={() => onAction('Document selected for upload.')} /></label></section></div></> }
-    function DonorDashboard({ onAction }: { onAction: (message: string) => void }) { return <><DashboardIntro title="My donations" description="Register a desktop or laptop so TUT can prepare it for a student." action="Register a device" onAction={onAction}/><div className="metrics"><Metric title="Devices donated" value="3" note="Across this programme" color="blue"/><Metric title="Awaiting collection" value="1" note="Collection being arranged" color="gold"/><Metric title="In refurbishment" value="2" note="With the tech team" color="green"/></div><section className="panel"><div className="panel-top"><div><h2>Donation registration</h2><p>Tell us about the computer you would like to donate.</p></div></div><div className="form-grid"><label>Device type<select><option>Laptop</option><option>Desktop</option></select></label><label>Brand<input placeholder="e.g. Lenovo" /></label><label>Model<input placeholder="e.g. ThinkPad L14" /></label><label>Condition<select><option>Good condition</option><option>Needs repair</option><option>Not working</option></select></label></div><button className="primary" onClick={() => onAction('Donation details submitted for collection.')}>Submit donation <HeartHandshake size={18}/></button></section></> }
-    function SupervisorDashboard({ onAction }: { onAction: (message: string) => void }) { return <><DashboardIntro title="Collections" description="Coordinate device pickups and keep every handover accounted for." action="Schedule collection" onAction={onAction}/><div className="metrics"><Metric title="Open requests" value="4" note="Donors awaiting a pickup" color="gold"/><Metric title="This week" value="8" note="Collections completed" color="blue"/><Metric title="Handed to tech" value="21" note="Devices in programme" color="green"/></div><section className="panel"><div className="panel-top"><div><h2>Collection requests</h2><p>Prioritise confirmed donor pickups.</p></div><button className="secondary" onClick={() => onAction('Collection list refreshed.')}>Refresh data</button></div><DataTable headers={['Donor', 'Device', 'Location', 'Preferred date', 'Status']} rows={[[<><strong>BrightPath Solutions</strong><small>Company donor</small></>, 'Dell Latitude 5420', 'Pretoria campus', '22 Aug 2026', 'Ready to schedule'], [<><strong>Dr Naledi Mokoena</strong><small>Individual donor</small></>, 'HP ProBook 440 G8', 'Arcadia', '23 Aug 2026', 'Confirmed'], [<><strong>Alumni Network</strong><small>Company donor</small></>, '5 desktops', 'Soshanguve', '25 Aug 2026', 'Awaiting confirmation']]} onAction={onAction}/></section></> }
-    function TechnicianDashboard({ onAction }: { onAction: (message: string) => void }) { return <><DashboardIntro title="Tech team work queue" description="Inspect incoming devices, update repairs and release passing equipment to storage." action="Register inspection" onAction={onAction}/><div className="metrics"><Metric title="Awaiting inspection" value="6" note="Newly collected devices" color="gold"/><Metric title="In repair" value="14" note="Active work items" color="blue"/><Metric title="Passed QA" value="38" note="Ready for allocation" color="green"/></div><section className="panel"><div className="panel-top"><div><h2>Repair and QA queue</h2><p>Update the condition of each device as work progresses.</p></div></div><DataTable headers={['Asset', 'Device', 'Condition', 'Assigned to', 'Progress']} rows={[[<strong>TUT-DEV-1044</strong>, 'HP ProBook 440 G8', 'Needs repair', 'K. Mthembu', 'Repair in progress'], [<strong>TUT-DEV-1046</strong>, 'Dell OptiPlex 3080', 'Awaiting inspection', 'Unassigned', 'New'], [<strong>TUT-DEV-1038</strong>, 'Dell Latitude 5420', 'Good condition', 'S. Molefe', 'Passed QA']]} onAction={onAction}/></section></> }
-function PageTitle({ title, description, action, onAction }: { title: string; description: string; action: string; onAction: () => void }) { return <div className="page-title"><div><p className="eyebrow">MISSING MIDDLE DEVICE PROGRAMME</p><h1>{title}</h1><p>{description}</p></div><button className="primary" onClick={onAction}>{action} <FileCheck2 size={18}/></button></div> }
-function Metric({title,value,note,color}:{title:string;value:string;note:string;color:string}) { return <article className="metric"><span className={`metric-line ${color}`}/><p>{title}</p><strong>{value}</strong><small>{note}</small></article> }
-function OverviewView({ data, onAction }: { data: { total_applications: number; eligible_students: number; ready_devices: number; awaiting_review: number; complete_first_submission: number; average_allocation_days: number; qa_pass_rate: number }; onAction: (message: string) => void }) { return <><PageTitle title="Overview" description="Analysis of applications, device supply and student allocations." action="Export analysis" onAction={() => onAction('Overview analysis exported.')} /><div className="metrics"><Metric title="Total applications" value={String(data.total_applications)} note="Current programme total" color="blue"/><Metric title="Eligible students" value={String(data.eligible_students)} note="Verified and eligible" color="gold"/><Metric title="Ready devices" value={String(data.ready_devices)} note="Ready to allocate" color="green"/><Metric title="Awaiting review" value={String(data.awaiting_review)} note="Current queue" color="red"/></div><section className="panel"><div className="panel-top"><div><h2>Programme analysis</h2><p>Current performance across the device allocation programme.</p></div></div><div className="overview-grid"><div><strong>{data.complete_first_submission}%</strong><span>Applications complete on first submission</span></div><div><strong>{data.average_allocation_days} days</strong><span>Average time from review to allocation</span></div><div><strong>{data.qa_pass_rate}%</strong><span>Devices passing refurbishment quality assurance</span></div></div></section></> }
-function ApplicationsView({ displayed, query, faculty, setQuery, setFaculty, onAction }: { displayed: Applicant[]; query: string; faculty: string; setQuery: (value: string) => void; setFaculty: (value: string) => void; onAction: (message: string) => void }) { return <><PageTitle title="Applications" description="Review, verify and fairly allocate refurbished devices." action="Review next application" onAction={() => onAction('New application review opened.')} /><div className="metrics"><Metric title="Total applications" value="248" note="18 submitted this week" color="blue"/><Metric title="Eligible students" value="126" note="51% of applications" color="gold"/><Metric title="Ready devices" value="38" note="12 awaiting QA" color="green"/><Metric title="Awaiting review" value="24" note="Average 2.4 days" color="red"/></div><section className="panel"><div className="panel-top"><div><h2>Allocation queue</h2><p>One canonical queue, ordered by complete application date.</p></div><button className="secondary" onClick={() => onAction('Queue rules: complete applications are ordered by submission date.')}><SlidersHorizontal size={17}/> Queue rules</button></div><div className="controls"><label className="search"><Search size={18}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search student, number or programme"/></label><label className="select"><select value={faculty} onChange={e => setFaculty(e.target.value)}><option>All faculties</option><option>ICT</option><option>Humanities</option><option>Finance & Economics</option><option>Management Sciences</option><option>Science</option></select><ChevronDown size={16}/></label></div><div className="table-wrap"><table><thead><tr><th>Queue</th><th>Student</th><th>Faculty</th><th>Academic profile</th><th>Application complete</th><th>Status</th><th/></tr></thead><tbody>{displayed.map(a => <tr key={a.number}><td><span className="queue">#{a.position}</span></td><td><strong>{a.name}</strong><small>{a.number}</small></td><td>{a.faculty}</td><td><span className="profile-tag">{a.profile}</span><small>{a.programme}</small></td><td>{a.submitted}</td><td><span className={`status ${statusClass[a.status]}`}>{a.status}</span></td><td><button className="more" aria-label={`Open ${a.name}'s application`} onClick={() => onAction(`${a.name}'s application selected.`)}>•••</button></td></tr>)}</tbody></table></div><div className="table-footer"><span>Showing <strong>{displayed.length}</strong> of 248 applications</span><button className="secondary" onClick={() => { setQuery(''); setFaculty('All faculties'); onAction('Showing all applications.') }}>View all applications</button></div></section></> }
-function InventoryView({ items, onAction }: { items: InventoryItem[]; onAction: (message: string) => void }) { return <><PageTitle title="Inventory" description="Track available devices ready for student allocation." action="Add inventory item" onAction={() => onAction('Inventory item form opened.')} /><div className="metrics"><Metric title="Total devices" value={String(items.length)} note="Tracked devices" color="blue"/><Metric title="Available now" value={String(items.filter(item => item.status === 'Ready to allocate').length)} note="Ready to allocate" color="green"/><Metric title="Reserved" value={String(items.filter(item => item.status === 'Reserved').length)} note="Matched to students" color="gold"/><Metric title="Awaiting QA" value={String(items.filter(item => item.status === 'Awaiting QA').length)} note="In quality assurance" color="red"/></div><DataPanel title="Available inventory" description="Devices currently tracked by the programme." headers={['Asset number', 'Device', 'Condition', 'Location', 'Status']} rows={items.map(item => [item.asset, item.model, item.condition, item.location, item.status])} onAction={onAction} /></> }
-function RefurbishmentView({ items, onAction }: { items: typeof refurbished; onAction: (message: string) => void }) { return <><PageTitle title="Refurbishment" description="Monitor refurbished equipment and quality assurance progress." action="Register equipment" onAction={() => onAction('Refurbishment registration opened.')} /><div className="metrics"><Metric title="In refurbishment" value="14" note="Currently with technicians" color="blue"/><Metric title="Completed this month" value={String(items.length)} note="Tracked work items" color="green"/><Metric title="Passed QA" value={String(items.filter(item => item.result === 'Passed').length)} note="Quality approved" color="gold"/><Metric title="Needs attention" value={String(items.filter(item => item.result !== 'Passed').length)} note="Requires follow-up" color="red"/></div><DataPanel title="Refurbished equipment" description="Recent refurbishment work and quality assurance results." headers={['Asset number', 'Device', 'Technician', 'Completed', 'Result']} rows={items.map(item => [item.asset, item.model, item.technician, item.completed, item.result])} onAction={onAction} /></> }
-function StudentsView({ items, onAction }: { items: Student[]; onAction: (message: string) => void }) { const [studentQuery, setStudentQuery] = useState(''); const filtered = items.filter(student => `${student.name} ${student.number} ${student.faculty} ${student.programme}`.toLowerCase().includes(studentQuery.toLowerCase())); return <><PageTitle title="Students" description="View students participating in the device allocation programme." action="Register student" onAction={() => onAction('Student registration opened.')} /><section className="panel"><div className="panel-top"><div><h2>Student list</h2><p>{filtered.length} students currently shown.</p></div></div><div className="controls"><label className="search"><Search size={18}/><input value={studentQuery} onChange={e => setStudentQuery(e.target.value)} placeholder="Search student, number or faculty" /></label></div><DataTable headers={['Student', 'Faculty', 'Programme', 'Year', 'Device status']} rows={filtered.map(student => [<><strong>{student.name}</strong><small>{student.number}</small></>, student.faculty, student.programme, student.year, student.device])} onAction={onAction} /></section></> }
-function DataPanel({ title, description, headers, rows, onAction }: { title: string; description: string; headers: string[]; rows: string[][]; onAction: (message: string) => void }) { return <section className="panel"><div className="panel-top"><div><h2>{title}</h2><p>{description}</p></div><button className="secondary" onClick={() => onAction(`${title} refreshed.`)}>Refresh data</button></div><DataTable headers={headers} rows={rows} onAction={onAction} /></section> }
-function DataTable({ headers, rows, onAction }: { headers: string[]; rows: ReactNode[][]; onAction: (message: string) => void }) { return <div className="table-wrap"><table><thead><tr>{headers.map(header => <th key={header}>{header}</th>)}<th aria-label="Actions"/></tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}<td><button className="more" aria-label="Open details" onClick={() => onAction('Details opened.')}>•••</button></td></tr>)}</tbody></table></div> }
-function SimpleView({ title, description, action, onAction }: { title: string; description: string; action: string; onAction: (message: string) => void }) { return <><PageTitle title={title} description={description} action={action} onAction={() => onAction(`${title} opened.`)} /><section className="panel"><h2>{title}</h2><p>{description}</p></section></> }
+
 createRoot(document.getElementById('root')!).render(<App />)
